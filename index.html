@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Lobby Radio</title>
+<title>Lobby Chat</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet"/>
@@ -216,8 +216,12 @@ body::after {
   word-break:break-all;line-height:1.5;cursor:pointer;
 }
 .invite-link:hover{text-decoration:underline;}
+.invite-actions{
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  margin-top:8px;
+}
 .copy-btn{
-  width:100%;margin-top:8px;padding:8px;
+  width:100%;padding:8px;
   background:#111827;border:1px solid var(--line2);
   border-radius:8px;color:var(--muted);
   font-family:var(--mono);font-size:10px;font-weight:700;
@@ -225,6 +229,9 @@ body::after {
 }
 .copy-btn:hover{border-color:var(--blue);color:var(--blue);}
 .copy-btn.copied{border-color:var(--accent);color:var(--accent);}
+.copy-btn.share-ready{border-color:var(--warn);color:var(--warn);}
+.copy-btn.share-ready:hover{filter:brightness(1.08);}
+.copy-btn.disabled{opacity:.55;cursor:not-allowed;}
 
 /* Footer peer count */
 .peer-count{
@@ -337,6 +344,40 @@ body::after {
 .b-deaf{border-color:rgba(255,159,28,.4);color:#ff9f1c;}
 .b-live{border-color:rgba(87,232,156,.4);color:var(--accent);}
 
+
+/* Chat panel */
+.chat-panel{
+  display:grid;
+  grid-template-rows:1fr auto;
+  min-height:320px;
+}
+.chat-area{
+  background:#080b10;border-radius:10px;border:1px solid var(--line);
+  padding:10px;max-height:340px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:8px;
+}
+.chat-line{
+  display:flex;flex-direction:column;gap:3px;
+  padding:8px 10px;border-radius:10px;background:#0d1320;border:1px solid #162234;
+}
+.chat-line.self{border-color:rgba(91,156,246,.35);background:#0d1727;}
+.chat-head{display:flex;justify-content:space-between;gap:8px;font-size:10px;}
+.chat-user{color:var(--blue);font-weight:700;letter-spacing:.08em;}
+.chat-line.self .chat-user{color:#8ab6ff;}
+.chat-meta{color:#31455f;}
+.chat-text{font-size:12px;line-height:1.45;color:var(--text);white-space:pre-wrap;word-break:break-word;}
+.chat-compose{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px;}
+.chat-input{
+  width:100%;padding:12px 14px;background:#080b10;border:1px solid var(--line2);
+  border-radius:10px;color:var(--text);font-family:var(--mono);font-size:13px;
+}
+.chat-input:focus{outline:none;border-color:var(--blue);}
+.chat-send{
+  padding:12px 16px;background:#111827;border:1px solid var(--blue);border-radius:10px;
+  color:var(--blue);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;cursor:pointer;
+}
+.chat-send:hover{filter:brightness(1.1);}
+
 /* Activity log */
 .log-area{
   background:#080b10;border-radius:10px;
@@ -395,7 +436,7 @@ body::after {
 <div id="joinScreen">
   <div class="join-card">
     <div class="logo-eyebrow">◆ COMMS UNIT · P2P MESH ◆</div>
-    <div class="logo-title">LOBBY RADIO</div>
+    <div class="logo-title">LOBBY CHAT</div>
     <div class="logo-sub">CLIENT-HOSTED LOBBY · P2P VOICE MESH</div>
 
     <label class="field-label" for="inp-name">CALLSIGN</label>
@@ -419,7 +460,7 @@ body::after {
     <aside class="sidebar">
       <div>
         <div class="logo-eyebrow" style="text-align:left;margin-bottom:4px;">◆ COMMS</div>
-        <div class="sidebar-logo-title">LOBBY RADIO</div>
+        <div class="sidebar-logo-title">LOBBY CHAT</div>
         <div class="sidebar-logo-sub">P2P VOICE MESH · CLIENT-HOSTED</div>
       </div>
 
@@ -444,7 +485,10 @@ body::after {
       <div class="invite-box">
         <div class="invite-label">INVITE LINK</div>
         <div class="invite-link" id="inviteLink">—</div>
-        <button class="copy-btn" id="copyBtn" onclick="copyInvite()">COPY LINK</button>
+        <div class="invite-actions">
+          <button class="copy-btn" id="copyBtn" onclick="copyInvite()">COPY LINK</button>
+          <button class="copy-btn" id="shareBtn" onclick="shareInvite()">SHARE LINK</button>
+        </div>
       </div>
 
       <div class="peer-count" id="peerCount">0 PARTICIPANTS</div>
@@ -469,6 +513,24 @@ body::after {
       <div class="panel">
         <div style="font-size:9px;letter-spacing:.2em;color:var(--muted);margin-bottom:10px;">ACTIVITY LOG</div>
         <div class="log-area" id="logArea"></div>
+      </div>
+
+      <!-- Text chat -->
+      <div class="panel chat-panel">
+        <div>
+          <div class="topbar" style="margin-bottom:10px;">
+            <div class="topbar-title">TEXT CHAT</div>
+            <div class="legend">
+              <span class="pill pill-green">P2P</span>
+              <span class="pill" style="border-color:rgba(91,156,246,.35);color:var(--blue);">LIVE ROOM</span>
+            </div>
+          </div>
+          <div class="chat-area" id="chatArea"></div>
+        </div>
+        <div class="chat-compose">
+          <input class="chat-input" id="chatInput" maxlength="400" placeholder="Send a message to the room" autocomplete="off"/>
+          <button class="chat-send" id="chatSendBtn" onclick="sendChatMessage()">SEND</button>
+        </div>
       </div>
     </main>
 
@@ -499,7 +561,7 @@ const S = {
   hostId: null,
   isHost: false,
 
-  // participants: Map<peerId, {username, muted, deafened, speaking}>
+  // participants: Map<peerId, {username, muted, deafened, speaking, ping}>
   participants: new Map(),
 
   // voice
@@ -522,6 +584,10 @@ const S = {
   callConns: new Map(),
   remoteAudios: new Map(),
   _reprobeTimer: null,
+  _pingTimer: null,
+  chatHistory: [],
+  pingSeq: 0,
+  pendingPings: new Map(),
 };
 
 // ══════════════════════════════════════════════════════
@@ -557,6 +623,9 @@ function updateStatusBar() {
   const h = S.participants.get(S.hostId);
   document.getElementById('st-host').textContent   = h ? h.username : '—';
   document.getElementById('st-peers').textContent  = S.participants.size;
+  const others = Array.from(S.participants.entries()).filter(([pid,p]) => pid !== S.selfId && Number.isFinite(p.ping));
+  const avgPing = others.length ? Math.round(others.reduce((a,[,p]) => a + p.ping, 0) / others.length) : null;
+  document.getElementById('st-signal').textContent = avgPing !== null ? `Connected · ${avgPing}ms` : (S.peer ? 'Connected' : 'Connecting…');
   const n = S.participants.size;
   document.getElementById('peerCount').textContent = `${n} PARTICIPANT${n!==1?'S':''}`;
 }
@@ -581,9 +650,13 @@ function renderParticipants() {
     card.dataset.pid = pid;
 
     const initials = (p.username||'??').slice(0,2).toUpperCase();
+    const pingBadge = (!isSelf && Number.isFinite(p.ping))
+      ? `<span class="badge" style="border-color:rgba(91,156,246,.4);color:var(--blue);">${p.ping}MS</span>`
+      : '';
     const badges = [
       isHost ? '<span class="badge b-host">HOST</span>' : '',
       isSelf ? '<span class="badge b-self">YOU</span>'  : '',
+      pingBadge,
       p.muted    ? '<span class="badge b-muted">MUTED</span>'   : '',
       p.deafened ? '<span class="badge b-deaf">DEAFENED</span>' : '',
       speaking   ? '<span class="badge b-live">LIVE</span>'    : '',
@@ -606,6 +679,71 @@ function renderParticipants() {
     grid.appendChild(card);
   }
   updateStatusBar();
+}
+
+
+function pushChatMessage(msg) {
+  S.chatHistory.push(msg);
+  if(S.chatHistory.length > 250) S.chatHistory.shift();
+  renderChat();
+}
+
+function renderChat() {
+  const area = document.getElementById('chatArea');
+  if(!area) return;
+  if(!S.chatHistory.length) {
+    area.innerHTML = '<div class="log-system" style="font-size:11px;">No messages yet. Type something and hit send.</div>';
+    return;
+  }
+  area.innerHTML = '';
+  for(const msg of S.chatHistory) {
+    const line = document.createElement('div');
+    line.className = 'chat-line' + (msg.pid === S.selfId ? ' self' : '');
+    line.innerHTML = `
+      <div class="chat-head">
+        <span class="chat-user">${escHtml(msg.username || 'Unknown')}</span>
+        <span class="chat-meta">${escHtml(msg.time || ts())}</span>
+      </div>
+      <div class="chat-text">${escHtml(msg.text)}</div>
+    `;
+    area.appendChild(line);
+  }
+  area.scrollTop = area.scrollHeight;
+}
+
+function sendChatMessage() {
+  const input = document.getElementById('chatInput');
+  if(!input) return;
+  const text = input.value.trim();
+  if(!text) return;
+  const msg = {
+    type: 'chat',
+    id: `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+    username: S.username,
+    text,
+    sentAt: Date.now(),
+  };
+  pushChatMessage({ pid: S.selfId, username: S.username, text, time: ts(), id: msg.id });
+  broadcastMeta(msg);
+  addLog(`Chat · ${S.username}: ${text.slice(0,60)}${text.length>60?'…':''}`, 'info');
+  input.value = '';
+}
+
+function sendPing(remotePid) {
+  const conn = S.dataConns.get(remotePid);
+  if(!conn || !conn.open) return;
+  const id = `${S.selfId}-${++S.pingSeq}-${Date.now()}`;
+  S.pendingPings.set(id, { pid: remotePid, t0: performance.now() });
+  sendMeta(conn, { type:'ping', id, t0: Date.now() });
+}
+
+function startPingLoop() {
+  if(S._pingTimer) clearInterval(S._pingTimer);
+  S._pingTimer = setInterval(() => {
+    S.dataConns.forEach((conn, pid) => {
+      if(conn.open) sendPing(pid);
+    });
+  }, 5000);
 }
 
 // ══════════════════════════════════════════════════════
@@ -700,6 +838,7 @@ function handleMeta(fromPid, raw) {
         muted:     false,
         deafened:  false,
         speaking:  false,
+        ping:      null,
         joinedAt:  msg.joinedAt||Date.now(),
       });
       addLog(`${msg.username} joined the lobby`, 'join');
@@ -730,6 +869,7 @@ function handleMeta(fromPid, raw) {
         muted:    msg.muted||false,
         deafened: msg.deafened||false,
         speaking: false,
+        ping: existing.ping ?? null,
         joinedAt: msg.joinedAt||Date.now(),
       });
       // if host info provided and we don't have one
@@ -767,6 +907,31 @@ function handleMeta(fromPid, raw) {
       break;
     }
 
+    case 'ping': {
+      const dc = S.dataConns.get(fromPid);
+      if(dc) sendMeta(dc, { type:'pong', id: msg.id });
+      break;
+    }
+
+    case 'pong': {
+      const pending = S.pendingPings.get(msg.id);
+      if(!pending) break;
+      S.pendingPings.delete(msg.id);
+      const rtt = Math.max(1, Math.round(performance.now() - pending.t0));
+      const p = S.participants.get(fromPid);
+      if(p) {
+        p.ping = p.ping ? Math.round((p.ping * 0.6) + (rtt * 0.4)) : rtt;
+        renderParticipants();
+      }
+      break;
+    }
+
+    case 'chat': {
+      pushChatMessage({ pid: fromPid, username: msg.username, text: msg.text, time: ts(), id: msg.id });
+      addLog(`Chat · ${msg.username}: ${msg.text.slice(0,60)}${msg.text.length>60?'…':''}`, 'info');
+      break;
+    }
+
     case 'leave': {
       const name = shortId(fromPid);
       S.participants.delete(fromPid);
@@ -792,6 +957,7 @@ function connectToPeer(remotePid) {
   dc.on('open', () => {
     // announce ourselves
     sendMeta(dc, {type:'hello', username:S.username, joinedAt:Date.now()});
+    sendPing(remotePid);
     // call for audio
     callPeer(remotePid);
   });
@@ -820,6 +986,9 @@ function handlePeerLeft(pid) {
 }
 
 function cleanupPeer(pid) {
+  for (const [id, pending] of Array.from(S.pendingPings.entries())) {
+    if (pending.pid === pid) S.pendingPings.delete(id);
+  }
   const dc = S.dataConns.get(pid);
   if(dc){ try{dc.close();}catch(_){} S.dataConns.delete(pid); }
   const mc = S.callConns.get(pid);
@@ -860,19 +1029,19 @@ function normalizeRoom(raw) {
 }
 
 // Build a PeerJS-safe ID: only [a-z0-9-], no consecutive hyphens, max 64 chars.
-// Prefix "lr-" (lobby radio), then room slug, then a random suffix.
+// Prefix "lc-" (lobby chat), then room slug, then a random suffix.
 function makePeerId(roomSlug) {
   const rand = Math.random().toString(36).slice(2,9) +
                Math.random().toString(36).slice(2,9); // ~14 safe chars
-  return `lr-${roomSlug}-${rand}`.slice(0, 64);
+  return `lc-${roomSlug}-${rand}`.slice(0, 64);
 }
 
 // Slot IDs for bootstrap discovery — same safe charset.
 function slotId(roomSlug, n) {
-  return `lr-${roomSlug}-s${n}`;
+  return `lc-${roomSlug}-s${n}`;
 }
 function anchorId(roomSlug) {
-  return `lr-${roomSlug}-anchor`;
+  return `lc-${roomSlug}-anchor`;
 }
 
 // Build the invite URL only when running over http/https.
@@ -912,16 +1081,19 @@ async function joinLobby() {
   const invite = buildInviteInfo(roomSlug);
   const inviteLinkEl = document.getElementById('inviteLink');
   const copyBtn      = document.getElementById('copyBtn');
+  const shareBtn     = document.getElementById('shareBtn');
   if (invite.mode === 'url') {
     inviteLinkEl.textContent = invite.value;
     inviteLinkEl.title       = invite.value;
-    copyBtn.style.display    = '';
+    copyBtn.textContent      = 'COPY LINK';
+    copyBtn.onclick          = copyInvite;
+    shareBtn.textContent     = 'SHARE LINK';
+    shareBtn.disabled        = !navigator.share;
+    shareBtn.className       = 'copy-btn' + (navigator.share ? ' share-ready' : ' disabled');
   } else {
     inviteLinkEl.textContent = `Room code: ${invite.value}`;
     inviteLinkEl.title       = '';
     copyBtn.textContent      = 'COPY CODE';
-    copyBtn.style.display    = '';
-    // Override copy to write just the code
     copyBtn.onclick = () => {
       navigator.clipboard.writeText(invite.value).then(()=>{
         copyBtn.textContent='COPIED ✓';
@@ -929,11 +1101,14 @@ async function joinLobby() {
         setTimeout(()=>{copyBtn.textContent='COPY CODE';copyBtn.classList.remove('copied');},2000);
       });
     };
+    shareBtn.textContent = 'SHARE CODE';
+    shareBtn.disabled    = !navigator.share;
+    shareBtn.className   = 'copy-btn' + (navigator.share ? ' share-ready' : ' disabled');
   }
 
   // Add self to participants immediately
   S.participants.set(S.selfId, {
-    username, muted:false, deafened:false, speaking:false, joinedAt:Date.now()
+    username, muted:false, deafened:false, speaking:false, ping:null, joinedAt:Date.now()
   });
 
   // Mic setup — show clear banner on failure
@@ -967,7 +1142,7 @@ async function joinLobby() {
       // Re-key participant map with confirmed ID
       const existing = Array.from(S.participants.values())[0];
       S.participants.clear();
-      S.participants.set(id, existing || {username,muted:false,deafened:false,speaking:false,joinedAt:Date.now()});
+      S.participants.set(id, existing || {username,muted:false,deafened:false,speaking:false,ping:null,joinedAt:Date.now()});
 
       document.getElementById('st-signal').textContent = 'Ready';
       addLog(`Joined room "${roomSlug}" as ${username}`, 'join');
@@ -986,6 +1161,8 @@ async function joinLobby() {
         for(let i=0;i<6;i++) connectToPeer(slotId(roomSlug,i));
       }
 
+      renderChat();
+      startPingLoop();
       // Re-probe every 8s to catch peers who joined while we were connecting
       S._reprobeTimer = setInterval(() => probeRoomSlots(roomSlug), 8000);
     });
@@ -1042,6 +1219,7 @@ function probeRoomSlots(roomSlug) {
     dc.on('open',()=>{
       S.dataConns.set(sid, dc);
       sendMeta(dc, {type:'hello', username:S.username, joinedAt:Date.now()});
+      sendPing(sid);
       callPeer(sid);
     });
     dc.on('data',  raw => handleMeta(sid, raw));
@@ -1104,6 +1282,29 @@ function copyInvite(){
   });
 }
 
+function shareInvite(){
+  const invite = buildInviteInfo(S.roomId);
+  const btn = document.getElementById('shareBtn');
+  if(!navigator.share){
+    addLog('Native share is not available in this browser', 'info');
+    return;
+  }
+  const isUrl = invite.mode === 'url';
+  const data = isUrl
+    ? { title:'Lobby Chat Invite', text:`Join my Lobby Chat room: ${S.roomId}`, url:invite.value }
+    : { title:'Lobby Chat Room Code', text:`Join my Lobby Chat room with code: ${invite.value}` };
+
+  navigator.share(data).then(()=>{
+    const orig = btn.textContent;
+    btn.textContent='SHARED ✓';
+    btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent=orig;btn.classList.remove('copied');},2000);
+  }).catch(err=>{
+    if(err && err.name === 'AbortError') return;
+    addLog('Share failed on this device', 'err');
+  });
+}
+
 // ══════════════════════════════════════════════════════
 //  PTT KEYBOARD
 // ══════════════════════════════════════════════════════
@@ -1130,6 +1331,7 @@ window.addEventListener('keyup',e=>{
 window.addEventListener('beforeunload',()=>{
   broadcastMeta({type:'leave'});
   if(S._reprobeTimer) clearInterval(S._reprobeTimer);
+  if(S._pingTimer) clearInterval(S._pingTimer);
   S.dataConns.forEach(c=>{try{c.close();}catch(_){}});
   S.callConns.forEach(c=>{try{c.close();}catch(_){}});
   if(S.localStream) S.localStream.getTracks().forEach(t=>t.stop());
@@ -1154,8 +1356,11 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
 
   document.getElementById('joinBtn').addEventListener('click',joinLobby);
+  document.getElementById('chatSendBtn').addEventListener('click',sendChatMessage);
+  document.getElementById('chatInput').addEventListener('keydown',e=>{ if(e.key==='Enter') sendChatMessage(); });
   document.getElementById('inp-room').addEventListener('keydown',e=>{ if(e.key==='Enter') joinLobby(); });
   document.getElementById('inp-name').addEventListener('keydown',e=>{ if(e.key==='Enter') joinLobby(); });
+  renderChat();
 });
 </script>
 </body>
