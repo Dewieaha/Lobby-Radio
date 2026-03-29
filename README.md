@@ -64,8 +64,9 @@ Example:
 
 python -m http.server
 
-License
+License and copyright
 
-No license. All rights reserved.
+No license. may change in future.
+© 2026 Greg Smith. All rights reserved.
 
 **Full Changelog**: https://github.com/Dewieaha/Lobby-Radio/commits/Webrtc
