@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Lobby Radio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --bg:      #080b10;
+  --panel:   #0d1320;
+  --inner:   #111827;
+  --line:    #1e2d40;
+  --line2:   #253347;
+  --text:    #dde6f0;
+  --muted:   #6b7f96;
+  --accent:  #57e89c;
+  --danger:  #f05a5a;
+  --warn:    #f5c842;
+  --blue:    #5b9cf6;
+  --mono:    'Share Tech Mono', monospace;
+  --cond:    'Barlow Condensed', sans-serif;
+}
+
+*{box-sizing:border-box;margin:0;padding:0;}
+
+body {
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Scanline overlay ── */
+body::before {
+  content:'';
+  position:fixed;inset:0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0,0,0,0.07) 3px,
+    rgba(0,0,0,0.07) 4px
+  );
+  pointer-events:none;
+  z-index:9999;
+}
+
+/* ── Noise grain ── */
+body::after {
+  content:'';
+  position:fixed;inset:0;
+  opacity:0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events:none;
+  z-index:9998;
+}
+
+/* ══════════════════════════════════════════
+   JOIN SCREEN
+══════════════════════════════════════════ */
+#joinScreen {
+  min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  background: radial-gradient(ellipse at 40% 30%, #0b1e30 0%, #080b10 65%);
+  padding:24px;
+}
+
+.join-card {
+  width:100%;max-width:440px;
+  background:rgba(13,19,32,0.97);
+  border:1px solid var(--line2);
+  border-radius:22px;
+  padding:40px 36px;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(87,232,156,0.05);
+  animation: slideup 0.5s cubic-bezier(0.16,1,0.3,1);
+}
+
+@keyframes slideup {
+  from{transform:translateY(24px);opacity:0;}
+  to{transform:translateY(0);opacity:1;}
+}
+
+.logo-eyebrow {
+  font-size:10px;letter-spacing:.35em;color:var(--muted);
+  text-align:center;margin-bottom:6px;
+}
+.logo-title {
+  font-family:var(--cond);
+  font-size:46px;font-weight:800;letter-spacing:.06em;
+  text-align:center;line-height:1;color:var(--text);
+  margin-bottom:4px;
+}
+.logo-sub {
+  font-size:10px;color:var(--muted);letter-spacing:.14em;
+  text-align:center;margin-bottom:32px;
+}
+
+.field-label {
+  font-size:9px;letter-spacing:.22em;color:var(--muted);
+  margin-bottom:6px;display:block;
+}
+.field-input {
+  width:100%;padding:12px 14px;
+  background:#080b10;border:1px solid var(--line2);
+  border-radius:10px;color:var(--text);
+  font-family:var(--mono);font-size:14px;
+  transition:border-color .15s;
+  margin-bottom:14px;
+}
+.field-input:focus{outline:none;border-color:var(--accent);}
+.field-input::placeholder{color:#253347;}
+
+.join-btn {
+  width:100%;padding:14px;margin-top:4px;
+  background:linear-gradient(135deg,#132a1e,#1a2e40);
+  border:1px solid var(--accent);border-radius:12px;
+  color:var(--accent);font-family:var(--cond);
+  font-size:16px;font-weight:800;letter-spacing:.14em;
+  cursor:pointer;transition:all .15s;
+}
+.join-btn:hover{background:linear-gradient(135deg,#1a3826,#1e3650);filter:brightness(1.06);}
+.join-hint{
+  text-align:center;margin-top:16px;
+  font-size:10px;color:#1e2d40;letter-spacing:.1em;
+}
+.join-hint kbd {
+  background:#111827;padding:2px 6px;
+  border-radius:5px;border:1px solid #1e2d40;
+  color:#3a5070;font-size:10px;
+}
+
+/* ══════════════════════════════════════════
+   LOBBY SCREEN
+══════════════════════════════════════════ */
+#lobbyScreen{display:none;}
+.lobby-wrap {
+  display:grid;
+  grid-template-columns:290px 1fr;
+  gap:12px;padding:12px;
+  min-height:100vh;
+}
+@media(max-width:780px){
+  .lobby-wrap{grid-template-columns:1fr;}
+  .sidebar{position:relative!important;height:auto!important;}
+}
+
+/* ── Sidebar ── */
+.sidebar {
+  background:rgba(13,19,32,0.97);
+  border:1px solid var(--line);
+  border-radius:18px;padding:18px;
+  display:flex;flex-direction:column;gap:12px;
+  height:calc(100vh - 24px);
+  position:sticky;top:12px;overflow:hidden;
+}
+
+.sidebar-logo-title{
+  font-family:var(--cond);font-size:28px;font-weight:800;
+  letter-spacing:.06em;line-height:1;
+}
+.sidebar-logo-sub{font-size:9px;color:var(--muted);letter-spacing:.14em;margin-top:3px;}
+
+/* Status block */
+.status-block{
+  background:#080b10;border:1px solid var(--line);
+  border-radius:12px;padding:12px;
+}
+.status-row{
+  display:flex;justify-content:space-between;
+  align-items:center;font-size:11px;margin-bottom:5px;
+}
+.status-row:last-child{margin-bottom:0;}
+.status-key{color:var(--muted);letter-spacing:.12em;}
+.status-val{
+  color:var(--text);max-width:160px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-align:right;
+}
+.status-val.green{color:var(--accent);}
+
+/* Controls grid */
+.ctrl-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+.ctrl-btn {
+  padding:10px 6px;border-radius:10px;
+  border:1px solid var(--line2);
+  background:#111827;color:var(--muted);
+  font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.08em;cursor:pointer;
+  transition:all .15s;text-align:center;
+}
+.ctrl-btn:hover{filter:brightness(1.12);}
+.ctrl-btn.active-green{background:#0c1f14;border-color:var(--accent);color:var(--accent);}
+.ctrl-btn.active-red  {background:#1f0c0c;border-color:var(--danger);color:var(--danger);}
+.ctrl-btn.active-warn {background:#1f180c;border-color:var(--warn);color:var(--warn);}
+.ctrl-btn.span2{grid-column:span 2;}
+.ctrl-btn.ptt-live{
+  animation: pttring 0.5s ease-out infinite alternate;
+}
+@keyframes pttring{
+  from{box-shadow:0 0 0 0 rgba(87,232,156,.5);}
+  to{box-shadow:0 0 0 8px rgba(87,232,156,0);}
+}
+
+/* Invite box */
+.invite-box{
+  background:#080b10;border:1px solid var(--line);
+  border-radius:12px;padding:12px;
+}
+.invite-label{font-size:9px;letter-spacing:.2em;color:var(--muted);margin-bottom:8px;}
+.invite-link{
+  font-size:10px;color:var(--blue);
+  word-break:break-all;line-height:1.5;cursor:pointer;
+}
+.invite-link:hover{text-decoration:underline;}
+.copy-btn{
+  width:100%;margin-top:8px;padding:8px;
+  background:#111827;border:1px solid var(--line2);
+  border-radius:8px;color:var(--muted);
+  font-family:var(--mono);font-size:10px;font-weight:700;
+  letter-spacing:.1em;cursor:pointer;transition:all .15s;
+}
+.copy-btn:hover{border-color:var(--blue);color:var(--blue);}
+.copy-btn.copied{border-color:var(--accent);color:var(--accent);}
+
+/* Footer peer count */
+.peer-count{
+  margin-top:auto;text-align:center;
+  font-size:10px;color:#1e2d40;letter-spacing:.12em;
+}
+
+/* ── Main panel ── */
+.main-col{display:flex;flex-direction:column;gap:12px;}
+
+.panel{
+  background:rgba(13,19,32,0.97);
+  border:1px solid var(--line);
+  border-radius:18px;padding:18px;
+}
+
+.topbar{
+  display:flex;justify-content:space-between;align-items:center;
+  margin-bottom:14px;
+}
+.topbar-title{
+  font-family:var(--cond);font-size:18px;font-weight:800;
+  letter-spacing:.08em;
+}
+.legend{display:flex;gap:7px;flex-wrap:wrap;}
+.pill{
+  font-size:9px;padding:4px 10px;border-radius:999px;
+  background:#080b10;border:1px solid;
+  font-weight:700;letter-spacing:.1em;
+}
+.pill-green{border-color:rgba(87,232,156,.35);color:var(--accent);}
+.pill-red  {border-color:rgba(240,90,90,.35);color:var(--danger);}
+.pill-warn {border-color:rgba(245,200,66,.35);color:var(--warn);}
+
+/* Participant grid */
+#participantGrid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:10px;
+}
+
+/* Participant card */
+.pcard{
+  background:#111827;border:1px solid var(--line);
+  border-radius:14px;padding:14px;
+  transition:all .18s ease;
+  position:relative;overflow:hidden;
+}
+.pcard.speaking{
+  border-color:rgba(87,232,156,.6);
+  box-shadow:0 0 0 1px rgba(87,232,156,.15),0 4px 28px rgba(87,232,156,.12);
+  transform:translateY(-2px);
+  background:linear-gradient(135deg,#0a1c11,#0d1a1f);
+}
+.pcard.muted{opacity:.6;}
+.pcard-glow{
+  position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 110%,rgba(87,232,156,.1) 0%,transparent 70%);
+  opacity:0;transition:opacity .2s;
+}
+.pcard.speaking .pcard-glow{opacity:1;}
+
+.pcard-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.pcard-avatar{
+  width:36px;height:36px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:800;flex-shrink:0;
+  border:2px solid var(--line);
+  transition:border-color .18s;
+  font-family:var(--cond);
+}
+.pcard-avatar.self-av{
+  background:linear-gradient(135deg,#1a2e5a,#0d1830);
+  border-color:#3a6abf;color:#7aadff;
+}
+.pcard-avatar.bot-av{
+  background:linear-gradient(135deg,#1a2030,#0f1525);
+  color:var(--muted);
+}
+.pcard.speaking .pcard-avatar{border-color:rgba(87,232,156,.7);}
+
+.pcard-name{
+  font-size:12px;font-weight:700;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  flex:1;color:var(--text);letter-spacing:.02em;
+}
+.pcard.speaking .pcard-name{color:#b4ffd4;}
+
+/* Wave bars */
+.wave{display:flex;align-items:flex-end;gap:2px;height:16px;flex-shrink:0;}
+.wave-bar{
+  width:3px;border-radius:2px;background:var(--accent);
+  height:4px;transition:height .1s;
+}
+.pcard.speaking .wave-bar{animation:wavebar .55s ease-in-out infinite alternate;}
+.wave-bar:nth-child(2){animation-delay:.1s;}
+.wave-bar:nth-child(3){animation-delay:.2s;}
+.wave-bar:nth-child(4){animation-delay:.3s;}
+@keyframes wavebar{from{height:3px;}to{height:14px;}}
+
+.pcard-badges{display:flex;flex-wrap:wrap;gap:5px;}
+.badge{
+  font-size:9px;padding:3px 8px;border-radius:999px;
+  background:#080b10;border:1px solid;
+  font-weight:700;letter-spacing:.1em;
+}
+.b-host{border-color:rgba(245,200,66,.4);color:var(--warn);}
+.b-self{border-color:rgba(91,156,246,.4);color:var(--blue);}
+.b-muted{border-color:rgba(240,90,90,.4);color:var(--danger);}
+.b-deaf{border-color:rgba(255,159,28,.4);color:#ff9f1c;}
+.b-live{border-color:rgba(87,232,156,.4);color:var(--accent);}
+
+/* Activity log */
+.log-area{
+  background:#080b10;border-radius:10px;
+  max-height:140px;overflow-y:auto;
+  padding:10px;
+  display:flex;flex-direction:column;gap:3px;
+}
+.log-line{display:flex;gap:8px;font-size:11px;line-height:1.5;}
+.log-ts{color:#1e2d40;flex-shrink:0;}
+.log-join{color:var(--accent);}
+.log-leave{color:var(--danger);}
+.log-host{color:var(--warn);}
+.log-info{color:var(--blue);}
+.log-system{color:var(--muted);}
+.log-err{color:#ff6b6b;}
+
+/* Speaking indicator bar at bottom of window */
+#pttBar{
+  position:fixed;bottom:0;left:0;right:0;
+  height:3px;background:var(--accent);
+  transform:scaleX(0);transition:transform .12s;
+  transform-origin:left;z-index:9997;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:#080b10;}
+::-webkit-scrollbar-thumb{background:#1e2d40;border-radius:3px;}
+/* Mic permission banner */
+#micBanner {
+  position:fixed;top:0;left:0;right:0;z-index:10000;
+  padding:10px 16px;
+  background:linear-gradient(90deg,#1f0c0c,#1a1020);
+  border-bottom:1px solid rgba(240,90,90,.35);
+}
+.mic-banner-inner {
+  display:flex;align-items:center;gap:12px;
+  max-width:900px;margin:0 auto;
+}
+.mic-icon { font-size:16px; flex-shrink:0; }
+#micBannerText {
+  flex:1;font-size:11px;color:#e07070;
+  letter-spacing:.05em;line-height:1.4;
+}
+.mic-dismiss {
+  background:none;border:none;color:#6b7f96;
+  font-size:14px;cursor:pointer;flex-shrink:0;
+  padding:2px 6px;
+}
+.mic-dismiss:hover{color:var(--danger);}
+</style>
+</head>
+<body>
+
+<!-- ══ JOIN SCREEN ══ -->
+<div id="joinScreen">
+  <div class="join-card">
+    <div class="logo-eyebrow">◆ COMMS UNIT · P2P MESH ◆</div>
+    <div class="logo-title">LOBBY RADIO</div>
+    <div class="logo-sub">CLIENT-HOSTED LOBBY · P2P VOICE MESH</div>
+
+    <label class="field-label" for="inp-name">CALLSIGN</label>
+    <input class="field-input" id="inp-name" maxlength="24" placeholder="Enter player name" autocomplete="off"/>
+
+    <label class="field-label" for="inp-room">ROOM ID</label>
+    <input class="field-input" id="inp-room" maxlength="32" placeholder="default" autocomplete="off"/>
+
+    <button class="join-btn" id="joinBtn">JOIN LOBBY</button>
+    <div class="join-hint">
+      Share the room ID with friends &nbsp;·&nbsp; Hold <kbd>V</kbd> for push-to-talk
+    </div>
+  </div>
+</div>
+
+<!-- ══ LOBBY SCREEN ══ -->
+<div id="lobbyScreen">
+  <div class="lobby-wrap">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div>
+        <div class="logo-eyebrow" style="text-align:left;margin-bottom:4px;">◆ COMMS</div>
+        <div class="sidebar-logo-title">LOBBY RADIO</div>
+        <div class="sidebar-logo-sub">P2P VOICE MESH · CLIENT-HOSTED</div>
+      </div>
+
+      <!-- Status -->
+      <div class="status-block">
+        <div class="status-row"><span class="status-key">YOU</span><span class="status-val" id="st-self">—</span></div>
+        <div class="status-row"><span class="status-key">ROOM</span><span class="status-val" id="st-room">—</span></div>
+        <div class="status-row"><span class="status-key">HOST</span><span class="status-val" id="st-host">—</span></div>
+        <div class="status-row"><span class="status-key">PEERS</span><span class="status-val" id="st-peers">0</span></div>
+        <div class="status-row"><span class="status-key">SIGNAL</span><span class="status-val green" id="st-signal">Connecting…</span></div>
+      </div>
+
+      <!-- Controls -->
+      <div class="ctrl-grid">
+        <button class="ctrl-btn" id="btn-mute"   onclick="toggleMute()">MUTE</button>
+        <button class="ctrl-btn" id="btn-deafen" onclick="toggleDeafen()">DEAFEN</button>
+        <button class="ctrl-btn span2" id="btn-ptt" onclick="togglePtt()">PTT: OFF</button>
+        <button class="ctrl-btn span2" onclick="rerollHost()">⟳ REROLL HOST</button>
+      </div>
+
+      <!-- Invite -->
+      <div class="invite-box">
+        <div class="invite-label">INVITE LINK</div>
+        <div class="invite-link" id="inviteLink">—</div>
+        <button class="copy-btn" id="copyBtn" onclick="copyInvite()">COPY LINK</button>
+      </div>
+
+      <div class="peer-count" id="peerCount">0 PARTICIPANTS</div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main-col">
+      <!-- Participants panel -->
+      <div class="panel">
+        <div class="topbar">
+          <div class="topbar-title">PARTICIPANTS</div>
+          <div class="legend">
+            <span class="pill pill-warn">HOST</span>
+            <span class="pill pill-green">LIVE</span>
+            <span class="pill pill-red">MUTED</span>
+          </div>
+        </div>
+        <div id="participantGrid"></div>
+      </div>
+
+      <!-- Activity log -->
+      <div class="panel">
+        <div style="font-size:9px;letter-spacing:.2em;color:var(--muted);margin-bottom:10px;">ACTIVITY LOG</div>
+        <div class="log-area" id="logArea"></div>
+      </div>
+    </main>
+
+  </div>
+</div>
+
+<!-- Mic permission banner -->
+<div id="micBanner" style="display:none;">
+  <div class="mic-banner-inner">
+    <span class="mic-icon">🎙</span>
+    <span id="micBannerText">Microphone access denied — voice chat disabled. Chat and presence still work.</span>
+    <button class="mic-dismiss" onclick="document.getElementById('micBanner').style.display='none'">✕</button>
+  </div>
+</div>
+
+<!-- PTT indicator bar -->
+<div id="pttBar"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════
+const S = {
+  peer: null,          // PeerJS Peer
+  selfId: null,        // our PeerJS id (= username__roomid__uuid)
+  username: null,
+  roomId: null,
+  hostId: null,
+  isHost: false,
+
+  // participants: Map<peerId, {username, muted, deafened, speaking}>
+  participants: new Map(),
+
+  // voice
+  localStream: null,
+  localTrack: null,
+  analyser: null,
+  audioCtx: null,
+  speaking: false,
+
+  // state flags
+  muted: false,
+  deafened: false,
+  pttEnabled: false,
+  pttHeld: false,
+
+  // peer connections
+  // dataConns: Map<peerId, DataConnection>  — signaling/metadata
+  // callConns: Map<peerId, MediaConnection> — audio
+  dataConns: new Map(),
+  callConns: new Map(),
+  remoteAudios: new Map(),
+  _reprobeTimer: null,
+};
+
+// ══════════════════════════════════════════════════════
+//  UTILITIES
+// ══════════════════════════════════════════════════════
+function ts() {
+  return new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+
+function addLog(text, type='system') {
+  const el = document.getElementById('logArea');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-ts">${ts()}</span><span class="log-${type}">${escHtml(text)}</span>`;
+  el.appendChild(line);
+  // trim to 200 lines
+  while(el.children.length > 200) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function shortId(peerId) {
+  const p = S.participants.get(peerId);
+  return p ? p.username : peerId.slice(0,8);
+}
+
+function updateStatusBar() {
+  document.getElementById('st-self').textContent   = S.username || '—';
+  document.getElementById('st-room').textContent   = S.roomId   || '—';
+  const h = S.participants.get(S.hostId);
+  document.getElementById('st-host').textContent   = h ? h.username : '—';
+  document.getElementById('st-peers').textContent  = S.participants.size;
+  const n = S.participants.size;
+  document.getElementById('peerCount').textContent = `${n} PARTICIPANT${n!==1?'S':''}`;
+}
+
+// ══════════════════════════════════════════════════════
+//  PARTICIPANT CARD RENDERING
+// ══════════════════════════════════════════════════════
+function renderParticipants() {
+  const grid = document.getElementById('participantGrid');
+  grid.innerHTML = '';
+
+  const list = Array.from(S.participants.entries())
+    .sort(([,a],[,b]) => (a.joinedAt||0)-(b.joinedAt||0));
+
+  for(const [pid, p] of list) {
+    const isSelf   = pid === S.selfId;
+    const isHost   = pid === S.hostId;
+    const speaking = p.speaking && !p.muted;
+
+    const card = document.createElement('div');
+    card.className = 'pcard' + (speaking?' speaking':'') + (p.muted?' muted':'');
+    card.dataset.pid = pid;
+
+    const initials = (p.username||'??').slice(0,2).toUpperCase();
+    const badges = [
+      isHost ? '<span class="badge b-host">HOST</span>' : '',
+      isSelf ? '<span class="badge b-self">YOU</span>'  : '',
+      p.muted    ? '<span class="badge b-muted">MUTED</span>'   : '',
+      p.deafened ? '<span class="badge b-deaf">DEAFENED</span>' : '',
+      speaking   ? '<span class="badge b-live">LIVE</span>'    : '',
+    ].join('');
+
+    card.innerHTML = `
+      <div class="pcard-glow"></div>
+      <div class="pcard-top">
+        <div class="pcard-avatar ${isSelf?'self-av':'bot-av'}">${initials}</div>
+        <div class="pcard-name">${escHtml(p.username)}</div>
+        <div class="wave">
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+          <div class="wave-bar"></div>
+        </div>
+      </div>
+      <div class="pcard-badges">${badges}</div>
+    `;
+    grid.appendChild(card);
+  }
+  updateStatusBar();
+}
+
+// ══════════════════════════════════════════════════════
+//  AUDIO
+// ══════════════════════════════════════════════════════
+async function setupMic() {
+  S.localStream = await navigator.mediaDevices.getUserMedia({
+    audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1},
+    video:false
+  });
+  S.localTrack = S.localStream.getAudioTracks()[0];
+  applyTrack();
+
+  S.audioCtx  = new (window.AudioContext||window.webkitAudioContext)();
+  const src   = S.audioCtx.createMediaStreamSource(S.localStream);
+  S.analyser  = S.audioCtx.createAnalyser();
+  S.analyser.fftSize = 512;
+  src.connect(S.analyser);
+
+  startSpeakDetect();
+}
+
+function applyTrack() {
+  if(!S.localTrack) return;
+  const canTx = !S.muted && (!S.pttEnabled || S.pttHeld);
+  S.localTrack.enabled = canTx;
+  // PTT bar
+  document.getElementById('pttBar').style.transform =
+    (S.pttEnabled && S.pttHeld) ? 'scaleX(1)' : 'scaleX(0)';
+}
+
+function startSpeakDetect() {
+  const buf = new Uint8Array(S.analyser.frequencyBinCount);
+  const tick = () => {
+    if(!S.analyser) return;
+    S.analyser.getByteFrequencyData(buf);
+    const avg = buf.reduce((a,b)=>a+b,0)/buf.length;
+    const canTx = !S.muted && (!S.pttEnabled||S.pttHeld);
+    const now = avg > 18 && canTx;
+    if(now !== S.speaking) {
+      S.speaking = now;
+      const me = S.participants.get(S.selfId);
+      if(me){ me.speaking = now; renderParticipants(); }
+      broadcastMeta({type:'speaking',speaking:now});
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+function attachRemoteAudio(pid, stream) {
+  let audio = S.remoteAudios.get(pid);
+  if(!audio){
+    audio = document.createElement('audio');
+    audio.autoplay = true;
+    audio.playsInline = true;
+    document.body.appendChild(audio);
+    S.remoteAudios.set(pid, audio);
+  }
+  audio.srcObject = stream;
+  audio.muted = S.deafened;
+}
+
+function setAllRemoteMuted(val){
+  S.remoteAudios.forEach(a => a.muted=val);
+}
+
+// ══════════════════════════════════════════════════════
+//  P2P MESH — DATA (metadata/signaling bus)
+// ══════════════════════════════════════════════════════
+function broadcastMeta(msg) {
+  const payload = JSON.stringify(msg);
+  S.dataConns.forEach(c => {
+    if(c.open) c.send(payload);
+  });
+}
+
+function sendMeta(conn, msg) {
+  if(conn.open) conn.send(JSON.stringify(msg));
+}
+
+function handleMeta(fromPid, raw) {
+  let msg;
+  try { msg = JSON.parse(raw); } catch{ return; }
+
+  switch(msg.type){
+
+    case 'hello': {
+      // Peer announces themselves
+      S.participants.set(fromPid, {
+        username:  msg.username,
+        muted:     false,
+        deafened:  false,
+        speaking:  false,
+        joinedAt:  msg.joinedAt||Date.now(),
+      });
+      addLog(`${msg.username} joined the lobby`, 'join');
+
+      // send back our info + full room state if we're host
+      const dc = S.dataConns.get(fromPid);
+      if(dc) sendMeta(dc, {
+        type:      'welcome',
+        username:  S.username,
+        muted:     S.muted,
+        deafened:  S.deafened,
+        joinedAt:  Date.now(),
+        hostId:    S.hostId,
+        // give the new peer a list of everyone else so they can connect
+        peerList:  Array.from(S.participants.keys()).filter(p=>p!==fromPid&&p!==S.selfId),
+      });
+
+      renderParticipants();
+      break;
+    }
+
+    case 'welcome': {
+      // Response from an existing peer
+      const existing = S.participants.get(fromPid)||{};
+      S.participants.set(fromPid, {
+        ...existing,
+        username: msg.username,
+        muted:    msg.muted||false,
+        deafened: msg.deafened||false,
+        speaking: false,
+        joinedAt: msg.joinedAt||Date.now(),
+      });
+      // if host info provided and we don't have one
+      if(msg.hostId && !S.hostId) {
+        S.hostId = msg.hostId;
+        document.getElementById('st-signal').textContent='Connected';
+      }
+      // connect to peers we don't know yet
+      if(msg.peerList) {
+        msg.peerList.forEach(pid => {
+          if(!S.dataConns.has(pid)) connectToPeer(pid);
+        });
+      }
+      renderParticipants();
+      break;
+    }
+
+    case 'speaking': {
+      const p = S.participants.get(fromPid);
+      if(p){ p.speaking=msg.speaking; renderParticipants(); }
+      break;
+    }
+
+    case 'state': {
+      const p = S.participants.get(fromPid);
+      if(p){ p.muted=msg.muted; p.deafened=msg.deafened; renderParticipants(); }
+      break;
+    }
+
+    case 'host-change': {
+      S.hostId  = msg.hostId;
+      S.isHost  = (S.hostId === S.selfId);
+      addLog(`Host → ${shortId(msg.hostId)}`, 'host');
+      renderParticipants();
+      break;
+    }
+
+    case 'leave': {
+      const name = shortId(fromPid);
+      S.participants.delete(fromPid);
+      // if they were host, pick new host
+      if(S.hostId===fromPid && S.isHost) electNewHost();
+      cleanupPeer(fromPid);
+      addLog(`${name} left the lobby`, 'leave');
+      renderParticipants();
+      break;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  PEER CONNECT
+// ══════════════════════════════════════════════════════
+function connectToPeer(remotePid) {
+  if(S.dataConns.has(remotePid) || remotePid===S.selfId) return;
+
+  const dc = S.peer.connect(remotePid, {reliable:true});
+  S.dataConns.set(remotePid, dc);
+
+  dc.on('open', () => {
+    // announce ourselves
+    sendMeta(dc, {type:'hello', username:S.username, joinedAt:Date.now()});
+    // call for audio
+    callPeer(remotePid);
+  });
+  dc.on('data', raw => handleMeta(remotePid, raw));
+  dc.on('close',  () => handlePeerLeft(remotePid));
+  dc.on('error',  e  => { addLog(`Data error with ${shortId(remotePid)}: ${e.type}`, 'err'); handlePeerLeft(remotePid); });
+}
+
+function callPeer(remotePid) {
+  if(!S.localStream || S.callConns.has(remotePid)) return;
+  const call = S.peer.call(remotePid, S.localStream);
+  S.callConns.set(remotePid, call);
+  call.on('stream', stream => attachRemoteAudio(remotePid, stream));
+  call.on('close',  ()     => { S.callConns.delete(remotePid); });
+}
+
+function handlePeerLeft(pid) {
+  const name = shortId(pid);
+  if(S.participants.has(pid)){
+    S.participants.delete(pid);
+    addLog(`${name} disconnected`, 'leave');
+    if(S.hostId===pid && S.isHost) electNewHost();
+    cleanupPeer(pid);
+    renderParticipants();
+  }
+}
+
+function cleanupPeer(pid) {
+  const dc = S.dataConns.get(pid);
+  if(dc){ try{dc.close();}catch(_){} S.dataConns.delete(pid); }
+  const mc = S.callConns.get(pid);
+  if(mc){ try{mc.close();}catch(_){} S.callConns.delete(pid); }
+  const audio = S.remoteAudios.get(pid);
+  if(audio){ audio.srcObject=null; audio.remove(); S.remoteAudios.delete(pid); }
+}
+
+// ══════════════════════════════════════════════════════
+//  HOST ELECTION
+// ══════════════════════════════════════════════════════
+function electNewHost(force=false) {
+  // Only the current host (or on force) elects a new one
+  if(!force && !S.isHost) return;
+  const ids = Array.from(S.participants.keys());
+  if(!ids.length) return;
+  const newHost = ids[Math.floor(Math.random()*ids.length)];
+  S.hostId  = newHost;
+  S.isHost  = (newHost===S.selfId);
+  broadcastMeta({type:'host-change', hostId:newHost});
+  addLog(`Host → ${shortId(newHost)}`, 'host');
+  renderParticipants();
+}
+
+// ══════════════════════════════════════════════════════
+//  ROOM / ID HELPERS
+// ══════════════════════════════════════════════════════
+
+// Normalize a room name to a safe, predictable slug.
+// Lowercase, collapse anything not [a-z0-9] to a hyphen, dedupe hyphens,
+// strip leading/trailing hyphens, cap at 32 chars.
+function normalizeRoom(raw) {
+  return (raw||'')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 32) || 'default';
+}
+
+// Build a PeerJS-safe ID: only [a-z0-9-], no consecutive hyphens, max 64 chars.
+// Prefix "lr-" (lobby radio), then room slug, then a random suffix.
+function makePeerId(roomSlug) {
+  const rand = Math.random().toString(36).slice(2,9) +
+               Math.random().toString(36).slice(2,9); // ~14 safe chars
+  return `lr-${roomSlug}-${rand}`.slice(0, 64);
+}
+
+// Slot IDs for bootstrap discovery — same safe charset.
+function slotId(roomSlug, n) {
+  return `lr-${roomSlug}-s${n}`;
+}
+function anchorId(roomSlug) {
+  return `lr-${roomSlug}-anchor`;
+}
+
+// Build the invite URL only when running over http/https.
+// IMPORTANT: always build from origin+pathname — never from location.href,
+// which may already contain ?room= and would produce duplicated params.
+function buildInviteInfo(roomSlug) {
+  const proto = location.protocol;
+  const isHosted = proto === 'http:' || proto === 'https:';
+  if (isHosted) {
+    const clean = location.origin + location.pathname; // no query, no hash
+    return { mode: 'url', value: `${clean}?room=${encodeURIComponent(roomSlug)}` };
+  }
+  return { mode: 'code', value: roomSlug };
+}
+
+// ══════════════════════════════════════════════════════
+//  JOIN
+// ══════════════════════════════════════════════════════
+async function joinLobby() {
+  const nameRaw = document.getElementById('inp-name').value.trim();
+  const roomRaw = document.getElementById('inp-room').value.trim();
+  const username  = nameRaw || `Player-${Math.floor(Math.random()*9999)}`;
+  const roomSlug  = normalizeRoom(roomRaw);   // safe, normalized
+
+  S.username = username;
+  S.roomId   = roomSlug;
+
+  // Update the input so the user sees the normalized room name
+  document.getElementById('inp-room').value = roomSlug;
+
+  document.getElementById('joinScreen').style.display='none';
+  document.getElementById('lobbyScreen').style.display='block';
+
+  document.getElementById('st-signal').textContent='Connecting…';
+
+  // Invite info — URL if hosted, room code if local
+  const invite = buildInviteInfo(roomSlug);
+  const inviteLinkEl = document.getElementById('inviteLink');
+  const copyBtn      = document.getElementById('copyBtn');
+  if (invite.mode === 'url') {
+    inviteLinkEl.textContent = invite.value;
+    inviteLinkEl.title       = invite.value;
+    copyBtn.style.display    = '';
+  } else {
+    inviteLinkEl.textContent = `Room code: ${invite.value}`;
+    inviteLinkEl.title       = '';
+    copyBtn.textContent      = 'COPY CODE';
+    copyBtn.style.display    = '';
+    // Override copy to write just the code
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(invite.value).then(()=>{
+        copyBtn.textContent='COPIED ✓';
+        copyBtn.classList.add('copied');
+        setTimeout(()=>{copyBtn.textContent='COPY CODE';copyBtn.classList.remove('copied');},2000);
+      });
+    };
+  }
+
+  // Add self to participants immediately
+  S.participants.set(S.selfId, {
+    username, muted:false, deafened:false, speaking:false, joinedAt:Date.now()
+  });
+
+  // Mic setup — show clear banner on failure
+  try {
+    await setupMic();
+  } catch(e) {
+    const banner  = document.getElementById('micBanner');
+    const bannerT = document.getElementById('micBannerText');
+    const reason  = (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError')
+      ? 'Microphone access was denied.'
+      : `Microphone unavailable (${e.name}).`;
+    bannerT.textContent = `${reason} Voice chat is disabled — presence and chat still work. Allow mic access and rejoin to enable voice.`;
+    banner.style.display = 'block';
+    addLog(`Voice disabled: ${reason}`, 'err');
+  }
+
+  // ── Peer creation strategy ────────────────────────────────────────────────
+  // The fundamental problem with random peer IDs: nobody knows what ID to connect TO.
+  // Fix: the first peer into a room CLAIMS the well-known anchor ID for that room.
+  // Every subsequent joiner connects directly to that anchor ID — which is guaranteed
+  // to exist if anyone else is in the room. The anchor peer hands back a full peer list
+  // so the mesh fills in. If anchor is taken, PeerJS rejects it with 'unavailable-id'
+  // and we fall back to a random ID + connect to the anchor we just learned is occupied.
+
+  function bootPeer(preferredId) {
+    const peer = new Peer(preferredId, { debug: 0 });
+
+    peer.on('open', id => {
+      S.peer   = peer;
+      S.selfId = id;
+      // Re-key participant map with confirmed ID
+      const existing = Array.from(S.participants.values())[0];
+      S.participants.clear();
+      S.participants.set(id, existing || {username,muted:false,deafened:false,speaking:false,joinedAt:Date.now()});
+
+      document.getElementById('st-signal').textContent = 'Ready';
+      addLog(`Joined room "${roomSlug}" as ${username}`, 'join');
+
+      S.hostId = id; S.isHost = true;
+      renderParticipants();
+
+      const anchor = anchorId(roomSlug);
+      if(id === anchor) {
+        // We ARE the anchor — just wait for inbound connections
+        addLog('You are the first in this room — share the invite to bring others in', 'info');
+      } else {
+        // Connect to the anchor (who must exist, since it rejected us) plus all slots
+        addLog('Looking for peers…', 'info');
+        connectToPeer(anchor);
+        for(let i=0;i<6;i++) connectToPeer(slotId(roomSlug,i));
+      }
+
+      // Re-probe every 8s to catch peers who joined while we were connecting
+      S._reprobeTimer = setInterval(() => probeRoomSlots(roomSlug), 8000);
+    });
+
+    peer.on('connection', dc => {
+      const pid = dc.peer;
+      S.dataConns.set(pid, dc);
+      dc.on('data',  raw => handleMeta(pid, raw));
+      dc.on('close', ()  => handlePeerLeft(pid));
+      dc.on('error', ()  => handlePeerLeft(pid));
+    });
+
+    peer.on('call', call => {
+      call.answer(S.localStream || undefined);
+      const pid = call.peer;
+      S.callConns.set(pid, call);
+      call.on('stream', stream => attachRemoteAudio(pid, stream));
+      call.on('close',  ()     => S.callConns.delete(pid));
+    });
+
+    peer.on('error', e => {
+      if(e.type === 'unavailable-id') {
+        // Anchor slot is taken — someone else is in the room.
+        // Fall back to a random ID and connect to the anchor.
+        addLog('Room has existing peers, connecting…', 'info');
+        peer.destroy();
+        bootPeer(makePeerId(roomSlug));
+      } else if(e.type === 'peer-unavailable') {
+        // A specific probe target wasn't there — silent, expected for empty slots
+      } else {
+        addLog(`Connection error: ${e.type}`, 'err');
+        document.getElementById('st-signal').textContent = 'Error — refresh to retry';
+      }
+    });
+
+    peer.on('disconnected', () => {
+      document.getElementById('st-signal').textContent='Reconnecting…';
+      try { peer.reconnect(); } catch(_){}
+    });
+  }
+
+  // Always try to claim the anchor first
+  bootPeer(anchorId(roomSlug));
+}
+
+// Probe a handful of fixed, well-known slot IDs for this room.
+// Peers who arrive first will be on one of these slots (if they grabbed anchor/slot0-5).
+// Silent errors — a probe miss just means that slot is empty.
+function probeRoomSlots(roomSlug) {
+  const slots = [anchorId(roomSlug), ...Array.from({length:6},(_,i)=>slotId(roomSlug,i))];
+  for(const sid of slots){
+    if(sid === S.selfId || S.dataConns.has(sid)) continue;
+    const dc = S.peer.connect(sid, {reliable:true});
+    dc.on('open',()=>{
+      S.dataConns.set(sid, dc);
+      sendMeta(dc, {type:'hello', username:S.username, joinedAt:Date.now()});
+      callPeer(sid);
+    });
+    dc.on('data',  raw => handleMeta(sid, raw));
+    dc.on('close', ()  => handlePeerLeft(sid));
+    dc.on('error', ()  => {}); // slot empty — expected, ignore silently
+  }
+}
+
+// ══════════════════════════════════════════════════════
+//  CONTROLS
+// ══════════════════════════════════════════════════════
+function toggleMute(){
+  S.muted = !S.muted;
+  applyTrack();
+  const me=S.participants.get(S.selfId);
+  if(me) me.muted=S.muted;
+  renderParticipants();
+  const btn=document.getElementById('btn-mute');
+  btn.textContent=S.muted?'UNMUTE':'MUTE';
+  btn.className='ctrl-btn'+(S.muted?' active-red':'');
+  broadcastMeta({type:'state',muted:S.muted,deafened:S.deafened});
+  addLog(S.muted?'You muted your mic':'You unmuted','info');
+}
+
+function toggleDeafen(){
+  S.deafened=!S.deafened;
+  setAllRemoteMuted(S.deafened);
+  const me=S.participants.get(S.selfId);
+  if(me) me.deafened=S.deafened;
+  renderParticipants();
+  const btn=document.getElementById('btn-deafen');
+  btn.textContent=S.deafened?'UNDEAFEN':'DEAFEN';
+  btn.className='ctrl-btn'+(S.deafened?' active-warn':'');
+  broadcastMeta({type:'state',muted:S.muted,deafened:S.deafened});
+  addLog(S.deafened?'You deafened yourself':'You undeafened','info');
+}
+
+function togglePtt(){
+  S.pttEnabled=!S.pttEnabled;
+  applyTrack();
+  const btn=document.getElementById('btn-ptt');
+  btn.textContent=`PTT: ${S.pttEnabled?'ON · HOLD V':'OFF'}`;
+  btn.className='ctrl-btn span2'+(S.pttEnabled?' active-green':'');
+  addLog(S.pttEnabled?'Push-to-talk ON — hold V to speak':'Push-to-talk OFF','info');
+}
+
+function rerollHost(){
+  electNewHost(true);
+  addLog(`Host re-rolled → ${shortId(S.hostId)}`,'host');
+}
+
+function copyInvite(){
+  const invite = buildInviteInfo(S.roomId);
+  navigator.clipboard.writeText(invite.value).then(()=>{
+    const btn=document.getElementById('copyBtn');
+    const orig = btn.textContent;
+    btn.textContent='COPIED ✓';
+    btn.classList.add('copied');
+    setTimeout(()=>{btn.textContent=orig;btn.classList.remove('copied');},2000);
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  PTT KEYBOARD
+// ══════════════════════════════════════════════════════
+window.addEventListener('keydown',e=>{
+  if(e.code==='KeyV'&&S.pttEnabled&&!S.pttHeld){
+    S.pttHeld=true;
+    applyTrack();
+    const btn=document.getElementById('btn-ptt');
+    btn.classList.add('ptt-live');
+  }
+});
+window.addEventListener('keyup',e=>{
+  if(e.code==='KeyV'&&S.pttEnabled){
+    S.pttHeld=false;
+    applyTrack();
+    const btn=document.getElementById('btn-ptt');
+    btn.classList.remove('ptt-live');
+  }
+});
+
+// ══════════════════════════════════════════════════════
+//  BEFORE UNLOAD
+// ══════════════════════════════════════════════════════
+window.addEventListener('beforeunload',()=>{
+  broadcastMeta({type:'leave'});
+  if(S._reprobeTimer) clearInterval(S._reprobeTimer);
+  S.dataConns.forEach(c=>{try{c.close();}catch(_){}});
+  S.callConns.forEach(c=>{try{c.close();}catch(_){}});
+  if(S.localStream) S.localStream.getTracks().forEach(t=>t.stop());
+  if(S.peer) S.peer.destroy();
+});
+
+// ══════════════════════════════════════════════════════
+//  BOOT
+// ══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded',()=>{
+  // Read only the FIRST value of ?room= (URLSearchParams.get does this correctly),
+  // normalize it, then rewrite the URL in the address bar to the canonical clean form
+  // so that doubled params (?room=x&room=y) don't persist or confuse future loads.
+  const params = new URLSearchParams(location.search);
+  const roomParam = params.get('room'); // always picks the first occurrence
+  if(roomParam) {
+    const slug = normalizeRoom(roomParam);
+    document.getElementById('inp-room').value = slug;
+    // Replace the current history entry with the clean URL
+    const cleanUrl = location.origin + location.pathname + '?room=' + encodeURIComponent(slug);
+    history.replaceState(null, '', cleanUrl);
+  }
+
+  document.getElementById('joinBtn').addEventListener('click',joinLobby);
+  document.getElementById('inp-room').addEventListener('keydown',e=>{ if(e.key==='Enter') joinLobby(); });
+  document.getElementById('inp-name').addEventListener('keydown',e=>{ if(e.key==='Enter') joinLobby(); });
+});
+</script>
+</body>
+</html>
